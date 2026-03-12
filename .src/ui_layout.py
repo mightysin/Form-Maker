@@ -4,6 +4,12 @@ import datetime
 from llm_service import generate_notes_by_llm
 from excel_export import generate_excel
 
+# === 預設必定出現的注意事項 ===
+DEFAULT_NOTES = [
+    "本估價單30天內有效，如經同意施作，請簽名回傳。",
+    "本工程施工時間為正常上班日 (星期一至五，上午九點至下午五點)，如需特殊時段施工，需另行報價。"
+]
+
 def render_css():
     st.markdown(
         """
@@ -21,7 +27,7 @@ def render_css():
         unsafe_allow_html=True
     )
 
-# --- 購物車操作邏輯 ---
+# --- 操作邏輯 Callback ---
 def add_to_cart(name, price, unit, qty=1):
     st.session_state.cart.append({
         "品名": name,
@@ -36,8 +42,12 @@ def add_category_to_cart(category_name, items_by_category):
     for name, details in items_in_cat.items():
         add_to_cart(name, details["price"], details["unit"], 1)
 
-def clear_cart():
+# 拆分後的清除功能
+def clear_items():
     st.session_state.cart = []
+
+def reset_notes():
+    st.session_state.selected_notes = DEFAULT_NOTES.copy()
 
 # --- 畫面渲染區塊 ---
 def render_left_column(items_by_category, all_items_flat):
@@ -138,30 +148,47 @@ def render_right_column(notes_db, all_available_notes):
             st.session_state.cart = new_cart
         
         st.divider()
-        st.markdown(f"### 總計金額： ${total_price:,}")
+        st.markdown(f"### 總計金額： **${total_price:,}**")
         
         # --- AI 注意事項區塊 ---
         st.subheader("📝 專屬注意事項")
+        
+        # 防呆：確保我們的預設條款存在於全域選項中，避免 Streamlit 報錯
+        for dn in DEFAULT_NOTES:
+            if dn not in all_available_notes:
+                all_available_notes.insert(0, dn)
+
+        # 初始狀態賦予預設值
         if 'selected_notes' not in st.session_state:
-            st.session_state.selected_notes = notes_db.get("通用條款", [])
+            st.session_state.selected_notes = DEFAULT_NOTES.copy()
 
         if st.button("✨ 讓 AI 判斷注意事項", type="secondary", use_container_width=True):
             with st.spinner('AI 正在分析最適合的條款...'):
                 try:
-                    st.session_state.selected_notes = generate_notes_by_llm(
-                        st.session_state.cart, notes_db, all_available_notes
-                    )
+                    ai_notes = generate_notes_by_llm(st.session_state.cart, notes_db, all_available_notes)
+                    # 確保 AI 生成後，預設條款依然存在且在最前面
+                    combined = DEFAULT_NOTES.copy()
+                    for note in ai_notes:
+                        if note not in combined:
+                            combined.append(note)
+                    st.session_state.selected_notes = combined
                 except Exception as e:
                     st.error(str(e))
         
+        # 修正多選下拉選單的綁定 Bug：讓您滑鼠點擊框框內就能手動選擇清單中的條款
         st.session_state.selected_notes = st.multiselect(
-            "目前的注意事項清單 (可手動增刪)：",
+            "點擊下方框框，可展開選單手動新增或按 X 刪除：",
             options=all_available_notes,
-            default=st.session_state.selected_notes,
-            key="notes_selector"
+            default=st.session_state.selected_notes
         )
         
-        st.button("🗑️ 清空估價單", type="primary", on_click=clear_cart)
+        # 分離式的清除按鈕排版
+        c1, c2 = st.columns(2)
+        with c1:
+            st.button("🗑️ 僅清空估價品項", type="primary", use_container_width=True, on_click=clear_items)
+        with c2:
+            st.button("🧹 恢復預設注意事項", type="secondary", use_container_width=True, on_click=reset_notes)
+            
         return total_price
     else:
         st.info("👈 請從左側選擇分類加入項目，或在下方直接新增")
