@@ -60,6 +60,18 @@ def add_to_cart(name, price, unit):
 def clear_cart():
     st.session_state.cart = []
 
+def add_category_to_cart(category_name):
+    items_in_cat = items_by_category[category_name]
+    for name, details in items_in_cat.items():
+        st.session_state.cart.append({
+            "品名": name,
+            "數量": 1,
+            "單位": details["unit"],
+            "單價": int(details["price"]),
+            "金額": int(details["price"])
+        })
+
+
 # ================= 畫面 UI 佈局 =================
 
 st.title("📝 Form Maker 智慧估價單")
@@ -69,7 +81,7 @@ col_left, col_right = st.columns([1, 1])
 with col_left:
     st.header("1. 新增項目")
     
-    # --- 方案 A: 關鍵字快速搜尋 (保留，這個寫法不會卡) ---
+    # --- 方案 A: 關鍵字快速搜尋 (保留原本的) ---
     st.subheader("🔍 快速搜尋")
     search_options = list(all_items_flat.keys())
     selected_item_search = st.selectbox("輸入關鍵字搜尋品名：", [""] + search_options, key="search_box")
@@ -82,25 +94,31 @@ with col_left:
 
     st.divider()
 
-    # --- 方案 B: 分類聯動下拉選單 (取代幾百個按鈕，效能殺手終結者) ---
+    # --- 方案 B: 分類聯動下拉選單 (升級版) ---
     st.subheader("📁 依分類選擇")
     
     # 1. 選擇分類
     category_list = list(items_by_category.keys())
     selected_category = st.selectbox("步驟 1：選擇分類", ["請選擇分類..."] + category_list)
     
-    # 2. 選擇該分類下的品名
+    # 2. 選擇分類後，顯示「全部分類加入」按鈕與「單一品項選擇」
     if selected_category != "請選擇分類...":
         items_in_cat = items_by_category[selected_category]
         item_names = list(items_in_cat.keys())
         
-        selected_item_cat = st.selectbox("步驟 2：選擇品項", ["請選擇品項..."] + item_names)
+        # ✨ 新增：一鍵加入整個分類的按鈕
+        st.button(f"⚡ 一鍵加入【{selected_category}】全品項", key="btn_add_all_cat", type="secondary", use_container_width=True, 
+                  on_click=add_category_to_cart, args=(selected_category,))
+        
+        st.markdown("<p style='text-align: center; color: gray; margin-top: 10px; margin-bottom: 10px;'>— 或 —</p>", unsafe_allow_html=True)
+        
+        # 原本的：選擇單一品項
+        selected_item_cat = st.selectbox("步驟 2：選擇單一品項", ["請選擇品項..."] + item_names)
         
         if selected_item_cat != "請選擇品項...":
             details = items_in_cat[selected_item_cat]
             st.info(f"單價: ${details['price']} / {details['unit']}")
-            # 單一新增按鈕
-            st.button("➕ 從分類加入", key="btn_cat_add", type="primary", use_container_width=True, 
+            st.button("➕ 從分類加入單項", key="btn_cat_add", type="primary", use_container_width=True, 
                       on_click=add_to_cart, args=(selected_item_cat, details['price'], details['unit']))
 
 with col_right:
