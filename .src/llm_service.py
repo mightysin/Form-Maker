@@ -6,12 +6,28 @@ import streamlit as st
 # ================= 讀取 API 金鑰 =================
 def load_api_key():
     key_path = "api_key"
+    
+    # 🕵️ 印出 Python 目前到底站在哪個資料夾找東西
+    print(f"🔍 [Debug] Python 目前的執行目錄: {os.getcwd()}")
+    
+    # 檢查 "api_key" 存不存在
     if os.path.exists(key_path):
+        print(f"✅ [Debug] 找到 '{key_path}' 檔案了！")
         with open(key_path, "r", encoding="utf-8") as f:
-            # 讀取內容並用 strip() 去除前後可能不小心按到的空白或換行
-            return f.read().strip()
+            key_content = f.read().strip()
+            print(f"✅ [Debug] 金鑰長度: {len(key_content)}")
+            return key_content
+            
+    # 如果找不到，試試看是不是被加上了 .txt
+    elif os.path.exists(key_path + ".txt"):
+        print(f"⚠️ [Debug] 找不到 'api_key'，但找到了 'api_key.txt'！已被 Windows 隱藏附檔名。")
+        with open(key_path + ".txt", "r", encoding="utf-8") as f:
+            key_content = f.read().strip()
+            print(f"✅ [Debug] 金鑰長度: {len(key_content)}")
+            return key_content
+            
     else:
-        # 如果找不到檔案，當作備案去找環境變數
+        print(f"❌ [Debug] 徹底找不到檔案！請確認檔案真的放在 {os.getcwd()} 底下。")
         return os.environ.get("GEMINI_API_KEY", "")
 
 # 取得金鑰並設定
