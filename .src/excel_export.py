@@ -8,19 +8,15 @@ import streamlit as st
 
 def copy_worksheet_format_and_data(source_ws, target_ws):
     """將範本的儲存格內容、寬高、合併格式、顏色與字體完美複製到新的工作表中"""
-    # 1. 複製合併儲存格
     for mcr in source_ws.merged_cells.ranges:
         target_ws.merge_cells(str(mcr))
         
-    # 2. 複製欄寬
     for col_letter, col_dim in source_ws.column_dimensions.items():
         target_ws.column_dimensions[col_letter].width = col_dim.width
         
-    # 3. 複製列高
     for row_idx, row_dim in source_ws.row_dimensions.items():
         target_ws.row_dimensions[row_idx].height = row_dim.height
             
-    # 4. 複製儲存格資料與格式
     for row in source_ws.iter_rows():
         for cell in row:
             new_cell = target_ws.cell(row=cell.row, column=cell.column, value=cell.value)
@@ -32,7 +28,6 @@ def copy_worksheet_format_and_data(source_ws, target_ws):
                 new_cell.protection = copy(cell.protection)
                 new_cell.alignment = copy(cell.alignment)
                 
-    # 5. 複製圖片 (如公司大小章)
     for img in source_ws._images:
         new_img = copy(img)
         target_ws.add_image(new_img, img.anchor)
@@ -60,14 +55,12 @@ def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, s
         if client_name:
             ws.title = str(client_name)[:31] 
 
-    # 1. 填寫 TO 與日期 (固定在第 6 列)
     ws.cell(row=6, column=2).value = client_name
     
     minguo_year = export_date.year - 1911
     date_str = f"{minguo_year}/{export_date.month}/{export_date.day}"
     ws.cell(row=6, column=6).value = date_str
     
-    # 2. 填寫購物車內的項目
     current_row = 8
     for idx, item in enumerate(cart):
         if "小計" in str(ws.cell(row=current_row, column=5).value).strip():
@@ -82,7 +75,6 @@ def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, s
         ws.cell(row=current_row, column=6).value = item.get("金額", 0)   
         current_row += 1
 
-    # 3. 尋找底部的「小計」
     subtotal_row = -1
     for r in range(current_row, current_row + 100):
         cell_val = str(ws.cell(row=r, column=5).value).strip()
@@ -94,9 +86,7 @@ def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, s
             ws.cell(row=r+2, column=6).value = grand_total  
             break
 
-    # 4. 完美接合與動態對齊格式
     if subtotal_row != -1 and subtotal_row > current_row:
-        # 防當機掃雷魔法
         ranges_to_unmerge = []
         for m_range in ws.merged_cells.ranges:
             if not (m_range.max_row < current_row or m_range.min_row >= subtotal_row):
@@ -130,11 +120,10 @@ def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, s
             lines_needed = max(5, len(notes_text) // 40 + len(selected_notes))
             ws.merge_cells(start_row=notes_row, start_column=1, end_row=notes_row + lines_needed, end_column=7)
 
-            # ✨ 磁吸魔法：動態將下方的公司章吸附到注意事項正下方
+            # 磁吸魔法：將公司章吸附到注意事項正下方
             stamp_row = notes_row + lines_needed + 1
             for img in ws._images:
                 try:
-                    # 取得圖片原本的列與欄
                     if hasattr(img.anchor, '_from'):
                         original_row = img.anchor._from.row + 1
                         col_idx = img.anchor._from.col + 1
@@ -147,12 +136,37 @@ def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, s
                         else:
                             continue
                     
-                    # 防呆：如果圖片原本在很上方(例如表頭Logo，在第10列以上)，就不要動它
-                    # 只移動原本在項目區以下的圖片(公司章)
                     if original_row > 10:
                         img.anchor = f"{col_letter}{stamp_row}"
                 except Exception as e:
-                    print(f"圖片移動失敗: {e}")
+                    pass
+
+    # ========================================================
+    # ✨ 終極暴力破解：存檔前強制掃描所有圖片並寫死尺寸
+    # 您可以修改這裡的數字，直到匯出的比例看起來最完美為止
+    # (數值代表像素，通常 100~200 左右是合理範圍)
+    STAMP_WIDTH = 170   # 👈 在這裡修改寬度
+    STAMP_HEIGHT = 145  # 👈 在這裡修改高度
+    # ========================================================
+
+    for img in ws._images:
+        try:
+            # 取得圖片目前的列數
+            if hasattr(img.anchor, '_from'):
+                row_idx = img.anchor._from.row + 1
+            else:
+                match = re.match(r"([A-Z]+)(\d+)", str(img.anchor))
+                if match:
+                    row_idx = int(match.group(2))
+                else:
+                    row_idx = 0
+            
+            # 如果這張圖在第10列以下 (確保不影響未來可能加在表頭的Logo)
+            if row_idx > 10:
+                img.width = STAMP_WIDTH
+                img.height = STAMP_HEIGHT
+        except Exception:
+            pass
 
     output = io.BytesIO()
     wb.save(output)

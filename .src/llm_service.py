@@ -24,9 +24,6 @@ def load_api_key():
 # 取得金鑰並設定
 API_KEY = load_api_key()
 
-print(f"👀 [Debug] 讀到的金鑰長度: {len(API_KEY)}")
-print(f"👀 [Debug] 實際字串: '{API_KEY}'")
-
 if not API_KEY:
     # 提醒開發者
     print("⚠️ 警告：找不到名為 'api_key' 的檔案，或環境變數未設定！請確認金鑰是否存在。")
