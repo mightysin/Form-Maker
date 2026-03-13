@@ -61,9 +61,9 @@ def render_left_column(items_by_category, all_items_flat):
         item_info = all_items_flat[selected_item_search]
         st.caption(f"📍 分類來源：{item_info['category']}")
         s_col1, s_col2, s_col3 = st.columns([3, 1, 2])
-        mod_name_s = s_col1.text_input("品名", value=selected_item_search, key="mod_name_s")
-        mod_qty_s = s_col2.number_input("數量", value=1, min_value=1, step=1, key="mod_qty_s")
-        mod_price_s = s_col3.number_input(f"單價 (/{item_info['unit']})", value=int(item_info['price']), min_value=0, step=100, key="mod_price_s")
+        mod_name_s = s_col1.text_input("品名", value=selected_item_search, key=f"mod_name_s_{selected_item_search}")
+        mod_qty_s = s_col2.number_input("數量", value=1, min_value=1, step=1, key=f"mod_qty_s_{selected_item_search}")
+        mod_price_s = s_col3.number_input(f"單價 (/{item_info['unit']})", value=int(item_info['price']), min_value=0, step=100, key=f"mod_price_s_{selected_item_search}")
         
         st.button("➕ 從搜尋加入", key="btn_search_add", type="primary", use_container_width=True, 
                   on_click=add_to_cart, args=(mod_name_s, mod_price_s, item_info['unit'], mod_qty_s))
@@ -87,9 +87,9 @@ def render_left_column(items_by_category, all_items_flat):
         if selected_item_cat != "請選擇品項...":
             details = items_in_cat[selected_item_cat]
             c_col1, c_col2, c_col3 = st.columns([3, 1, 2])
-            mod_name_c = c_col1.text_input("品名", value=selected_item_cat, key="mod_name_c")
-            mod_qty_c = c_col2.number_input("數量", value=1, min_value=1, step=1, key="mod_qty_c")
-            mod_price_c = c_col3.number_input(f"單價 (/{details['unit']})", value=int(details['price']), min_value=0, step=100, key="mod_price_c")
+            mod_name_c = c_col1.text_input("品名", value=selected_item_cat, key=f"mod_name_c_{selected_item_cat}")
+            mod_qty_c = c_col2.number_input("數量", value=1, min_value=1, step=1, key=f"mod_qty_c_{selected_item_cat}")
+            mod_price_c = c_col3.number_input(f"單價 (/{details['unit']})", value=int(details['price']), min_value=0, step=100, key=f"mod_price_c_{selected_item_cat}")
             
             st.button("➕ 從分類加入單項", key="btn_cat_add", type="primary", use_container_width=True, 
                       on_click=add_to_cart, args=(mod_name_c, mod_price_c, details['unit'], mod_qty_c))

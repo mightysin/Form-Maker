@@ -29,6 +29,12 @@ def copy_worksheet_format_and_data(source_ws, target_ws):
                 new_cell.number_format = copy(cell.number_format)
                 new_cell.protection = copy(cell.protection)
                 new_cell.alignment = copy(cell.alignment)
+                
+    # 🌟 5. 新增：複製圖片 (如公司大小章)
+    # 檢查範本是否有放圖片，有的話就複製過來，並放在同一個位置
+    for img in source_ws._images:
+        new_img = copy(img)
+        target_ws.add_image(new_img, img.anchor)
 
 def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, selected_notes, uploaded_file=None):
     # 先載入我們的標準空白範本
