@@ -5,30 +5,21 @@ import streamlit as st
 
 # ================= 讀取 API 金鑰 =================
 def load_api_key():
+    # 1. 優先嘗試讀取 Streamlit Cloud 專屬的「保險箱 (Secrets)」
+    try:
+        if "GEMINI_API_KEY" in st.secrets:
+            return st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        pass # 本地端如果沒有保險箱，就忽略錯誤繼續往下找
+
+    # 2. 如果保險箱沒有，嘗試尋找本地端的實體檔案
     key_path = "api_key"
-    
-    # 🕵️ 印出 Python 目前到底站在哪個資料夾找東西
-    print(f"🔍 [Debug] Python 目前的執行目錄: {os.getcwd()}")
-    
-    # 檢查 "api_key" 存不存在
     if os.path.exists(key_path):
-        print(f"✅ [Debug] 找到 '{key_path}' 檔案了！")
         with open(key_path, "r", encoding="utf-8") as f:
-            key_content = f.read().strip()
-            print(f"✅ [Debug] 金鑰長度: {len(key_content)}")
-            return key_content
+            return f.read().strip()
             
-    # 如果找不到，試試看是不是被加上了 .txt
-    elif os.path.exists(key_path + ".txt"):
-        print(f"⚠️ [Debug] 找不到 'api_key'，但找到了 'api_key.txt'！已被 Windows 隱藏附檔名。")
-        with open(key_path + ".txt", "r", encoding="utf-8") as f:
-            key_content = f.read().strip()
-            print(f"✅ [Debug] 金鑰長度: {len(key_content)}")
-            return key_content
-            
-    else:
-        print(f"❌ [Debug] 徹底找不到檔案！請確認檔案真的放在 {os.getcwd()} 底下。")
-        return os.environ.get("GEMINI_API_KEY", "")
+    # 3. 最後的備案：讀取系統環境變數
+    return os.environ.get("GEMINI_API_KEY", "")
 
 # 取得金鑰並設定
 API_KEY = load_api_key()
