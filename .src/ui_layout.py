@@ -28,21 +28,59 @@ def render_css():
     )
 
 # --- 操作邏輯 Callback ---
+
+# ✨ 新增：刪除選取的項目
+def delete_selected_items():
+    st.session_state.cart = [item for item in st.session_state.cart if not item.get("選取", False)]
+
+# ✨ 優化：支援插入點，且插入後自動將焦點移至新項目
 def add_to_cart(name, price, unit, qty=1):
-    st.session_state.cart.append({
+    cart = st.session_state.cart
+    
+    # 尋找有被勾選的列，決定插入位置
+    selected_indices = [i for i, item in enumerate(cart) if item.get("選取", False)]
+    insert_idx = selected_indices[-1] + 1 if selected_indices else len(cart)
+    
+    # 加入前，先把所有舊的勾選狀態清除
+    for item in cart:
+        item["選取"] = False
+        
+    new_item = {
+        "選取": True,  # 自動勾選新加入的項目
         "品名": name,
         "數量": qty,
         "單位": unit,
         "單價": int(price),
         "金額": int(price) * qty
-    })
+    }
+    cart.insert(insert_idx, new_item)
 
 def add_category_to_cart(category_name, items_by_category):
+    cart = st.session_state.cart
+    
+    selected_indices = [i for i, item in enumerate(cart) if item.get("選取", False)]
+    insert_idx = selected_indices[-1] + 1 if selected_indices else len(cart)
+    
+    for item in cart:
+        item["選取"] = False
+
     items_in_cat = items_by_category[category_name]
     for name, details in items_in_cat.items():
-        add_to_cart(name, details["price"], details["unit"], 1)
+        new_item = {
+            "選取": False,
+            "品名": name,
+            "數量": 1,
+            "單位": details["unit"],
+            "單價": int(details["price"]),
+            "金額": int(details["price"])
+        }
+        cart.insert(insert_idx, new_item)
+        insert_idx += 1  
+        
+    # 整批加入後，將焦點停留在最後一項
+    if len(items_in_cat) > 0:
+        cart[insert_idx - 1]["選取"] = True
 
-# 拆分後的清除功能
 def clear_items():
     st.session_state.cart = []
 
@@ -98,19 +136,31 @@ def render_right_column(notes_db, all_available_notes):
     st.header("2. 目前估價單預覽")
     
     if len(st.session_state.cart) > 0:
+        
+        for item in st.session_state.cart:
+            if "選取" not in item:
+                item["選取"] = False
+
+        st.write("💡 提示：勾選「選取」框，可將新項目插在該列下方；或點擊下方按鈕刪除。")
+        
+        # ✨ 新增：刪除選取項目的按鈕
+        col_del, _ = st.columns([1, 2])
+        col_del.button("🗑️ 刪除選取項目", use_container_width=True, on_click=delete_selected_items)
+        
         df = pd.DataFrame(st.session_state.cart)
-        st.write("💡 提示：雙擊數字即可出現上下微調按鈕，或點選後直接使用鍵盤「上下方向鍵」修改。")
         
         edited_df = st.data_editor(
             df,
             column_config={
+                "選取": st.column_config.CheckboxColumn("選取", default=False, width="small"),
                 "品名": st.column_config.TextColumn(disabled=False),
                 "單價": st.column_config.NumberColumn(disabled=False, step=100, min_value=0),
                 "單位": st.column_config.TextColumn(disabled=False),
                 "數量": st.column_config.NumberColumn(disabled=False, step=1, min_value=1),
                 "金額": st.column_config.NumberColumn(disabled=True)
             },
-            hide_index=True,
+            column_order=("選取", "品名", "數量", "單位", "單價", "金額"),
+            hide_index=True, # 隱藏 Streamlit 原生的灰色核取方塊
             use_container_width=True,
             num_rows="dynamic",
             key="cart_editor"
@@ -125,6 +175,7 @@ def render_right_column(notes_db, all_available_notes):
             if pd.isna(item.get('數量')): item['數量'] = 1
             if pd.isna(item.get('單價')): item['單價'] = 0
             if pd.isna(item.get('單位')): item['單位'] = "式"
+            item['選取'] = bool(item.get('選取', False)) 
             
             calc_total = int(item['數量'] * item['單價'])
             if calc_total != item.get('金額'):
@@ -133,7 +184,9 @@ def render_right_column(notes_db, all_available_notes):
             
             if i < len(st.session_state.cart):
                 old_item = st.session_state.cart[i]
-                if item['品名'] != old_item['品名'] or item['單位'] != old_item['單位']:
+                if (item['品名'] != old_item['品名'] or 
+                    item['單位'] != old_item['單位'] or
+                    item['選取'] != old_item.get('選取', False)):
                     needs_rerun = True
                     
             total_price += calc_total
@@ -152,13 +205,10 @@ def render_right_column(notes_db, all_available_notes):
         
         # --- AI 注意事項區塊 ---
         st.subheader("📝 專屬注意事項")
-        
-        # 防呆：確保我們的預設條款存在於全域選項中，避免 Streamlit 報錯
         for dn in DEFAULT_NOTES:
             if dn not in all_available_notes:
                 all_available_notes.insert(0, dn)
 
-        # 初始狀態賦予預設值
         if 'selected_notes' not in st.session_state:
             st.session_state.selected_notes = DEFAULT_NOTES.copy()
 
@@ -166,7 +216,6 @@ def render_right_column(notes_db, all_available_notes):
             with st.spinner('AI 正在分析最適合的條款...'):
                 try:
                     ai_notes = generate_notes_by_llm(st.session_state.cart, notes_db, all_available_notes)
-                    # 確保 AI 生成後，預設條款依然存在且在最前面
                     combined = DEFAULT_NOTES.copy()
                     for note in ai_notes:
                         if note not in combined:
@@ -175,14 +224,12 @@ def render_right_column(notes_db, all_available_notes):
                 except Exception as e:
                     st.error(str(e))
         
-        # 修正多選下拉選單的綁定 Bug：讓您滑鼠點擊框框內就能手動選擇清單中的條款
         st.session_state.selected_notes = st.multiselect(
             "點擊下方框框，可展開選單手動新增或按 X 刪除：",
             options=all_available_notes,
             default=st.session_state.selected_notes
         )
         
-        # 分離式的清除按鈕排版
         c1, c2 = st.columns(2)
         with c1:
             st.button("🗑️ 僅清空估價品項", type="primary", use_container_width=True, on_click=clear_items)
@@ -218,7 +265,6 @@ def render_export_section(total_price):
             
         st.info(f"📊 估價單試算 ➡️ 小計：${subtotal:,} | 營業稅：${tax:,} | 總計：${grand_total:,}")
 
-        # === ✨ 新增：附加到現有檔案的區塊 ===
         st.divider()
         st.markdown("##### 📂 附加到客戶歷史檔案 (選填)")
         uploaded_file = st.file_uploader(
@@ -229,15 +275,12 @@ def render_export_section(total_price):
         
         if uploaded_file:
             st.success(f"✅ 已載入客戶歷史檔案：{uploaded_file.name}，本次報價將會附加進去！")
-        # =====================================
 
-        # 呼叫匯出檔案邏輯 (將 uploaded_file 傳遞給函數)
         excel_data = generate_excel(
             client_name, export_date, subtotal, tax, grand_total, 
             st.session_state.cart, st.session_state.selected_notes, uploaded_file
         )
         
-        # 根據是否有上傳檔案，動態決定下載的檔名
         if uploaded_file:
             file_name = f"{uploaded_file.name.replace('.xlsx', '')}_更新版.xlsx"
         else:
