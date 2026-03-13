@@ -1,6 +1,8 @@
 import io
 import openpyxl
 from openpyxl.styles import Alignment
+from openpyxl.utils import get_column_letter
+import re
 from copy import copy
 import streamlit as st
 
@@ -30,42 +32,34 @@ def copy_worksheet_format_and_data(source_ws, target_ws):
                 new_cell.protection = copy(cell.protection)
                 new_cell.alignment = copy(cell.alignment)
                 
-    # 🌟 5. 新增：複製圖片 (如公司大小章)
-    # 檢查範本是否有放圖片，有的話就複製過來，並放在同一個位置
+    # 5. 複製圖片 (如公司大小章)
     for img in source_ws._images:
         new_img = copy(img)
         target_ws.add_image(new_img, img.anchor)
 
 def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, selected_notes, uploaded_file=None):
-    # 先載入我們的標準空白範本
     template_wb = openpyxl.load_workbook("blank_form.xlsx")
     source_ws = template_wb.active
     
-    # 判斷使用者是否有上傳客戶的歷史檔案
     if uploaded_file is not None:
         wb = openpyxl.load_workbook(uploaded_file)
         
-        # 設定新工作表的名稱 (例如：0314_報價)
         sheet_title = f"{export_date.month:02d}{export_date.day:02d}_報價"
-        # 確保工作表名稱不重複
         base_title = sheet_title
         counter = 1
         while sheet_title in wb.sheetnames:
             sheet_title = f"{base_title}_{counter}"
             counter += 1
             
-        # 在客戶檔案中建立新工作表，並複製範本過去
         ws = wb.create_sheet(title=sheet_title)
         copy_worksheet_format_and_data(source_ws, ws)
-        wb.active = ws  # 切換到新建立的這張表準備寫入
+        wb.active = ws  
     else:
-        # 沒有上傳檔案，直接使用空白範本
         wb = template_wb
         ws = wb.active
         if client_name:
-            ws.title = str(client_name)[:31] # Excel 工作表名稱限制 31 字元
+            ws.title = str(client_name)[:31] 
 
-    # ================= 以下寫入邏輯不變 =================
     # 1. 填寫 TO 與日期 (固定在第 6 列)
     ws.cell(row=6, column=2).value = client_name
     
@@ -135,6 +129,30 @@ def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, s
             
             lines_needed = max(5, len(notes_text) // 40 + len(selected_notes))
             ws.merge_cells(start_row=notes_row, start_column=1, end_row=notes_row + lines_needed, end_column=7)
+
+            # ✨ 磁吸魔法：動態將下方的公司章吸附到注意事項正下方
+            stamp_row = notes_row + lines_needed + 1
+            for img in ws._images:
+                try:
+                    # 取得圖片原本的列與欄
+                    if hasattr(img.anchor, '_from'):
+                        original_row = img.anchor._from.row + 1
+                        col_idx = img.anchor._from.col + 1
+                        col_letter = get_column_letter(col_idx)
+                    else:
+                        match = re.match(r"([A-Z]+)(\d+)", str(img.anchor))
+                        if match:
+                            col_letter = match.group(1)
+                            original_row = int(match.group(2))
+                        else:
+                            continue
+                    
+                    # 防呆：如果圖片原本在很上方(例如表頭Logo，在第10列以上)，就不要動它
+                    # 只移動原本在項目區以下的圖片(公司章)
+                    if original_row > 10:
+                        img.anchor = f"{col_letter}{stamp_row}"
+                except Exception as e:
+                    print(f"圖片移動失敗: {e}")
 
     output = io.BytesIO()
     wb.save(output)
