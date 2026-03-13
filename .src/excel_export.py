@@ -1,15 +1,65 @@
 import io
 import openpyxl
 from openpyxl.styles import Alignment
+from copy import copy
 import streamlit as st
 
-def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, selected_notes):
-    """
-    負責寫入資料、刪除空白列、解除隱藏合併、並匯出 Excel 二進位檔
-    """
-    wb = openpyxl.load_workbook("blank_form.xlsx")
-    ws = wb.active
+def copy_worksheet_format_and_data(source_ws, target_ws):
+    """將範本的儲存格內容、寬高、合併格式、顏色與字體完美複製到新的工作表中"""
+    # 1. 複製合併儲存格
+    for mcr in source_ws.merged_cells.ranges:
+        target_ws.merge_cells(str(mcr))
+        
+    # 2. 複製欄寬
+    for col_letter, col_dim in source_ws.column_dimensions.items():
+        target_ws.column_dimensions[col_letter].width = col_dim.width
+        
+    # 3. 複製列高
+    for row_idx, row_dim in source_ws.row_dimensions.items():
+        target_ws.row_dimensions[row_idx].height = row_dim.height
+            
+    # 4. 複製儲存格資料與格式
+    for row in source_ws.iter_rows():
+        for cell in row:
+            new_cell = target_ws.cell(row=cell.row, column=cell.column, value=cell.value)
+            if cell.has_style:
+                new_cell.font = copy(cell.font)
+                new_cell.border = copy(cell.border)
+                new_cell.fill = copy(cell.fill)
+                new_cell.number_format = copy(cell.number_format)
+                new_cell.protection = copy(cell.protection)
+                new_cell.alignment = copy(cell.alignment)
+
+def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, selected_notes, uploaded_file=None):
+    # 先載入我們的標準空白範本
+    template_wb = openpyxl.load_workbook("blank_form.xlsx")
+    source_ws = template_wb.active
     
+    # 判斷使用者是否有上傳客戶的歷史檔案
+    if uploaded_file is not None:
+        wb = openpyxl.load_workbook(uploaded_file)
+        
+        # 設定新工作表的名稱 (例如：0314_報價)
+        sheet_title = f"{export_date.month:02d}{export_date.day:02d}_報價"
+        # 確保工作表名稱不重複
+        base_title = sheet_title
+        counter = 1
+        while sheet_title in wb.sheetnames:
+            sheet_title = f"{base_title}_{counter}"
+            counter += 1
+            
+        # 在客戶檔案中建立新工作表，並複製範本過去
+        ws = wb.create_sheet(title=sheet_title)
+        copy_worksheet_format_and_data(source_ws, ws)
+        wb.active = ws  # 切換到新建立的這張表準備寫入
+    else:
+        # 沒有上傳檔案，直接使用空白範本
+        wb = template_wb
+        ws = wb.active
+        if client_name:
+            ws.title = str(client_name)[:31] # Excel 工作表名稱限制 31 字元
+
+    # ================= 以下寫入邏輯不變 =================
     # 1. 填寫 TO 與日期 (固定在第 6 列)
     ws.cell(row=6, column=2).value = client_name
     
@@ -46,7 +96,7 @@ def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, s
 
     # 4. 完美接合與動態對齊格式
     if subtotal_row != -1 and subtotal_row > current_row:
-        # 🛡️ 防當機掃雷魔法：強制解除預計刪除區間內的合併儲存格
+        # 防當機掃雷魔法
         ranges_to_unmerge = []
         for m_range in ws.merged_cells.ranges:
             if not (m_range.max_row < current_row or m_range.min_row >= subtotal_row):
@@ -54,18 +104,15 @@ def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, s
         for m_range in ranges_to_unmerge:
             ws.unmerge_cells(str(m_range))
             
-        # 刪除多餘空白列
         rows_to_delete = subtotal_row - current_row
         ws.delete_rows(current_row, amount=rows_to_delete)
         
         new_subtotal_row = current_row
         
-        # 靠右對齊小計區塊
         right_align = Alignment(horizontal='right')
         for i in range(3):
             ws.cell(row=new_subtotal_row + i, column=5).alignment = right_align
         
-        # 寫入並合併注意事項
         notes_row = -1
         for r in range(new_subtotal_row + 3, new_subtotal_row + 15):
             if str(ws.cell(row=r, column=1).value).strip() != "":

@@ -218,13 +218,31 @@ def render_export_section(total_price):
             
         st.info(f"📊 估價單試算 ➡️ 小計：${subtotal:,} | 營業稅：${tax:,} | 總計：${grand_total:,}")
 
-        # 呼叫匯出檔案邏輯
-        excel_data = generate_excel(
-            client_name, export_date, subtotal, tax, grand_total, 
-            st.session_state.cart, st.session_state.selected_notes
+        # === ✨ 新增：附加到現有檔案的區塊 ===
+        st.divider()
+        st.markdown("##### 📂 附加到客戶歷史檔案 (選填)")
+        uploaded_file = st.file_uploader(
+            "如果您想將這份估價單作為「新工作表」加入現有的 Excel (如：百事.xlsx)，請在此上傳：", 
+            type=["xlsx"], 
+            help="⚠️ 注意：系統僅支援 .xlsx 格式。舊版的 .xls 請先透過 Excel 另存為 .xlsx 後再上傳。"
         )
         
-        file_name = f"{client_name if client_name else '未命名'}_估價單.xlsx"
+        if uploaded_file:
+            st.success(f"✅ 已載入客戶歷史檔案：{uploaded_file.name}，本次報價將會附加進去！")
+        # =====================================
+
+        # 呼叫匯出檔案邏輯 (將 uploaded_file 傳遞給函數)
+        excel_data = generate_excel(
+            client_name, export_date, subtotal, tax, grand_total, 
+            st.session_state.cart, st.session_state.selected_notes, uploaded_file
+        )
+        
+        # 根據是否有上傳檔案，動態決定下載的檔名
+        if uploaded_file:
+            file_name = f"{uploaded_file.name.replace('.xlsx', '')}_更新版.xlsx"
+        else:
+            file_name = f"{client_name if client_name else '未命名'}_估價單.xlsx"
+            
         st.download_button(
             label="📥 匯出並下載 Excel",
             data=excel_data,
