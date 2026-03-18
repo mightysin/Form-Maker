@@ -4,7 +4,13 @@ import glob
 import os
 
 # 引入我們拆分出去的模組
-from ui_layout import render_css, render_left_column, render_right_column, render_export_section
+from ui_layout import (
+    render_css, 
+    render_section_1_add_items, 
+    render_section_2_preview, 
+    render_section_3_notes, 
+    render_section_4_export
+)
 
 # 設定網頁標題與寬度
 st.set_page_config(page_title="Form Maker 估價單系統", layout="wide")
@@ -48,15 +54,24 @@ if 'cart' not in st.session_state:
 # ================= 畫面 UI 佈局 (完全模組化) =================
 st.title("📝 Form Maker 智慧估價單")
 
-col_left, col_right = st.columns([1, 1])
+col_left, col_right = st.columns([1, 2])
 
 # 渲染左半邊 (新增項目)
 with col_left:
-    render_left_column(items_by_category, all_items_flat)
-
-# 渲染右半邊 (預覽區與注意事項)，並取得總價
+    # 第一區塊：新增項目
+    render_section_1_add_items(items_by_category, all_items_flat)
+    
 with col_right:
-    total_price = render_right_column(notes_db, all_available_notes)
+    # 第二區塊：讓預覽表格獨佔右側巨大版面！
+    render_section_2_preview()
 
-# 渲染底部 (匯出區)
-render_export_section(total_price)
+
+st.divider() # 區塊之間可以用分隔線隔開，畫面比較整齊
+
+# 第三區塊：注意事項 (一開始就會顯示)
+render_section_3_notes(notes_db, all_available_notes)
+
+st.divider()
+
+# 第四區塊：匯出估價單 (一開始就會顯示)
+render_section_4_export()
