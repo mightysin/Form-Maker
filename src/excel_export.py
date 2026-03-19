@@ -141,7 +141,7 @@ def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, s
             ws.cell(row=new_subtotal_row + i, column=6).font = bold_font
 
         if raw_sum == grand_total and tax > 0:
-            ws.cell(row=new_subtotal_row+1, column=5).value = "營業稅(內含)"
+            ws.cell(row=new_subtotal_row+1, column=5).value = "營業稅"
             ws.cell(row=new_subtotal_row+2, column=6).value = f"=SUM({sum_range})"
             ws.cell(row=new_subtotal_row, column=6).value = f"=ROUND(F{new_subtotal_row+2}/1.05, 0)"
             ws.cell(row=new_subtotal_row+1, column=6).value = f"=F{new_subtotal_row+2}-F{new_subtotal_row}"
@@ -194,7 +194,7 @@ def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, s
                     pass
                     
     STAMP_WIDTH = 188
-    STAMP_HEIGHT = 139
+    STAMP_HEIGHT = 150
     
     for img in ws._images:
         try:

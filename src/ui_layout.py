@@ -363,7 +363,7 @@ def render_section_3_notes(notation_db, warning_db):
         default=st.session_state.selected_notes
     )
 
-    st.checkbox("✅ 啟用定金範本 (付款條件：30 / 40 / 30)", key="use_deposit")
+    st.checkbox("✅ 啟用定金範本 (付款條件：40 / 30 / 30)", key="use_deposit")
 
     # ==========================================
     # ⚠️ 區塊 B：施工免責與警語
@@ -458,7 +458,7 @@ def render_section_4_export():
 
     # 2. ✨ 終極保險：只要有勾選，就強制把這段文字塞進清單的最尾端！
     if st.session_state.get("use_deposit"):
-        deposit_text = "以上工程付款條件如下：\n(1)簽約：付款工程款30%。\n(2)主機及管件進場付款工程款40%。\n(3)驗收：付款工程款30%。\n(4)以上以現金或現金票付款。"
+        deposit_text = "以上工程付款條件如下：\n(1)簽約：付款工程款40%。\n(2)主機及管件進場付款工程款30%。\n(3)驗收：付款工程款30%。\n(4)以上以現金或現金票付款。"
         final_notes_to_export.append(deposit_text)
 
     # 3. 將組裝好的完整清單 (final_notes_to_export) 丟給 Excel 產生器
