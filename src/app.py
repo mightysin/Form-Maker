@@ -72,7 +72,7 @@ def load_notes():
     return {}
 
 # 1. 初始化資料字典
-items_by_category = load_data()
+items_by_category, all_items_flat = load_data()
 notes_db = load_notes()
 
 all_available_notes = []
