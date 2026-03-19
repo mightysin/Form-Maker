@@ -38,27 +38,25 @@ def load_data():
     all_items_flat = {}
     
     if os.path.exists(data_dir):
-        # 🛡️ 關鍵：排序後依序讀取檔案內容
+        # 🛡️ 確保排序
         for f in sorted(os.listdir(data_dir)):
             if f.endswith(".json"):
                 file_path = os.path.join(data_dir, f)
                 try:
                     with open(file_path, 'r', encoding='utf-8') as json_file:
                         data = json.load(json_file)
-                        # 以檔名作為大分類名稱 (例如: 01_探漏)
-                        category_name = f.replace(".json", "")
+                        
+                        # ✨ 修正點：同時拿掉 .json 和 _item，讓 Key 變得很乾淨
+                        # 例如 01_探漏 防爆栓_item.json -> 01_探漏 防爆栓
+                        category_name = f.replace("_item.json", "").replace(".json", "")
+                        
                         items_by_category[category_name] = data
                         
-                        # 同時建立扁平化字典供快速搜尋
                         for item_name, details in data.items():
                             details['category'] = category_name
                             all_items_flat[item_name] = details
                 except Exception as e:
                     st.error(f"讀取檔案 {f} 出錯：{e}")
-    else:
-        st.error(f"找不到資料夾：{data_dir}")
-        
-    # ✨ 這裡回傳兩個東西，就不會再報 ValueError 了
     return items_by_category, all_items_flat
 
 # --- 3. 初始化設定 ---
