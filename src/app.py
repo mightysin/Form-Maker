@@ -46,17 +46,23 @@ render_css()
 
 @st.cache_data
 def load_data():
-    items_by_category = {}
-    all_items_flat = {}
-    filepaths = glob.glob("Item_Price/*_item.json")
-    for path in filepaths:
-        category = os.path.basename(path).replace("_item.json", "")
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            items_by_category[category] = data
-            for item_name, details in data.items():
-                all_items_flat[item_name] = {"price": details["price"], "unit": details["unit"], "category": category}
-    return items_by_category, all_items_flat
+    # 📍 定位路徑：先抓到 app.py 所在的 src 資料夾，再往上一層找 Item_Price
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.abspath(os.path.join(current_dir, "..", "Item_Price"))
+    
+    item_files = []
+    
+    # 檢查資料夾是否存在
+    if os.path.exists(data_dir):
+        # 🛡️ 關鍵：使用 sorted() 確保檔案依照 01, 02, 03... 排序
+        for f in sorted(os.listdir(data_dir)):
+            if f.endswith(".json"):
+                item_files.append(f)
+    else:
+        print(f"找不到資料夾：{data_dir}")
+        
+    # 因為你不需要 notes_template 了，所以現在只回傳 item_files 即可
+    return item_files
 
 @st.cache_data
 def load_notes():
