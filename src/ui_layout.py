@@ -310,16 +310,21 @@ def render_section_3_notes(notation_db, warning_db):
     # 📝 區塊 A：專屬注意事項
     # ==========================================
     st.subheader("📝 專屬注意事項")
-    st.markdown("**(固定條款)**")
+    
+    st.markdown("(固定條款)")
     for sacred_note in SACRED_NOTES: st.markdown(f"🔒 `{sacred_note}`")
             
     dynamic_notes = get_dynamic_notes(st.session_state.cart)
     if dynamic_notes:
-        st.markdown("**(自動觸發條款)**")
+        st.markdown("(自動觸發條款)")
         for d_note in dynamic_notes: st.markdown(f"⚙️ `{d_note}`")
+        
+    # ✨ 預覽區：使用你圖片中的精確文字
+    if st.session_state.get("use_deposit"):
+        deposit_preview = "以上工程付款條件如下：\n(1)簽約：付款工程款30%。\n(2)主機及管件進場付款工程款40%。\n(3)驗收：付款工程款30%。\n(4)以上以現金或現金票付款。"
+        st.markdown(f"💰 **(定金範本條款將於匯出時附加於最末端)**\n```text\n{deposit_preview}\n```")
 
-    st.markdown("<br>", unsafe_allow_html=True) 
-
+    st.markdown("<br>", unsafe_allow_html=True)
     if st.button("✨ 讓 AI 自動判斷【注意事項】", type="secondary", use_container_width=True):
         if len(st.session_state.cart) == 0:
             st.warning("⚠️ 請先加入估價品項！")
@@ -357,7 +362,9 @@ def render_section_3_notes(notation_db, warning_db):
         options=list(set(st.session_state.selected_notes + flat_notations)),
         default=st.session_state.selected_notes
     )
-    
+
+    st.checkbox("✅ 啟用定金範本 (付款條件：30 / 40 / 30)", key="use_deposit")
+
     # ==========================================
     # ⚠️ 區塊 B：施工免責與警語
     # ==========================================
@@ -442,8 +449,19 @@ def render_section_4_export():
     current_warnings = st.session_state.get('selected_warnings', [])
     dynamic_notes = get_dynamic_notes(st.session_state.cart)
     
-    final_notes_to_export = SACRED_NOTES + dynamic_notes + current_notes + current_warnings
+    # 1. 先把固定、動態、手動選的條款全部裝進一個新的清單
+    final_notes_to_export = []
+    final_notes_to_export.extend(SACRED_NOTES)
+    final_notes_to_export.extend(dynamic_notes)
+    final_notes_to_export.extend(current_notes)
+    final_notes_to_export.extend(current_warnings)
 
+    # 2. ✨ 終極保險：只要有勾選，就強制把這段文字塞進清單的最尾端！
+    if st.session_state.get("use_deposit"):
+        deposit_text = "以上工程付款條件如下：\n(1)簽約：付款工程款30%。\n(2)主機及管件進場付款工程款40%。\n(3)驗收：付款工程款30%。\n(4)以上以現金或現金票付款。"
+        final_notes_to_export.append(deposit_text)
+
+    # 3. 將組裝好的完整清單 (final_notes_to_export) 丟給 Excel 產生器
     if len(st.session_state.cart) > 0:
         excel_data = generate_excel(
             client_name, export_date, subtotal, tax, grand_total, 

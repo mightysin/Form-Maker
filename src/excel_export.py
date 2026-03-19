@@ -193,8 +193,9 @@ def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, s
                 except Exception:
                     pass
                     
-    STAMP_WIDTH = 180
-    STAMP_HEIGHT = 180
+    STAMP_WIDTH = 188
+    STAMP_HEIGHT = 139
+    
     for img in ws._images:
         try:
             if hasattr(img.anchor, '_from'):
