@@ -3,6 +3,7 @@ import pandas as pd
 import datetime
 import re
 from excel_export import generate_excel
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
 # ✨ 這裡是最關鍵的修正：正確引入兩顆全新的 AI 引擎！
 from llm_service import generate_notations_by_llm, generate_warnings_by_llm
@@ -81,56 +82,53 @@ def delete_selected_items():
     st.session_state.cart = [item for item in st.session_state.cart if not item.get("選取", False)]
 
 def add_to_cart(name, price, unit, qty=1):
-    cart = st.session_state.cart
-    if any(item.get("品名") == name for item in cart):
-        st.warning(f"⚠️ 「{name}」已存在估價單中！請直接在右側修改數量。")
-        return
-        
-    selected_indices = [i for i, item in enumerate(cart) if item.get("選取", False)]
-    insert_idx = selected_indices[-1] + 1 if selected_indices else len(cart)
-    
-    for item in cart: item["選取"] = False
-        
+    subtotal = int(price) * int(qty)
     new_item = {
-        "選取": True, "品名": name, "數量": safe_int(qty, 1),
-        "單位": unit, "單價": safe_int(price, 0), "金額": safe_int(price, 0) * safe_int(qty, 1)
+        "品名": name,
+        "數量": qty,
+        "單位": unit,
+        "單價": price,
+        "金額": subtotal
     }
-    cart.insert(insert_idx, new_item)
+    
+    # 檢查是否有指定插入位置 (從右邊表格選取的)
+    insert_index = st.session_state.get('insert_index')
+    
+    if insert_index is not None and 0 <= insert_index < len(st.session_state.cart):
+        # 插入到選取的「該項目的下方」(所以是 index + 1)
+        st.session_state.cart.insert(insert_index + 1, new_item)
+        # 更新指標：讓連續按「加入」時，品項會順序往下排
+        st.session_state.insert_index += 1
+    else:
+        # 如果都沒選取，就加到最下面
+        st.session_state.cart.append(new_item)
 
 def add_category_to_cart(category_name, items_by_category):
-    cart = st.session_state.cart
-    selected_indices = [i for i, item in enumerate(cart) if item.get("選取", False)]
-    insert_idx = selected_indices[-1] + 1 if selected_indices else len(cart)
+    items = items_by_category[category_name]
+    insert_index = st.session_state.get('insert_index')
     
-    for item in cart: item["選取"] = False
-
-    items_in_cat = items_by_category[category_name]
-    added_count = 0
-    
-    for name, details in items_in_cat.items():
-        if any(item.get("品名") == name for item in cart): continue
-        p = safe_int(details["price"], 0)
-        new_item = {
-            "選取": False, "品名": name, "數量": 1,
-            "單位": details["unit"], "單價": p, "金額": p
-        }
-        cart.insert(insert_idx, new_item)
-        insert_idx += 1  
-        added_count += 1
+    new_items = []
+    for item_name, details in items.items():
+        new_items.append({
+            "品名": item_name,
+            "數量": 1,
+            "單位": details["unit"],
+            "單價": details["price"],
+            "金額": details["price"]
+        })
         
-    if added_count > 0:
-        cart[insert_idx - 1]["選取"] = True
+    if insert_index is not None and 0 <= insert_index < len(st.session_state.cart):
+        # 將整個分類的品項依序插入
+        for i, item in enumerate(new_items):
+            st.session_state.cart.insert(insert_index + 1 + i, item)
+        # 更新指標，確保下次加入不會位置錯亂
+        st.session_state.insert_index += len(new_items)
     else:
-        clean_cat = re.sub(r'^\d+_', '', category_name)
-        st.warning(f"⚠️ 【{clean_cat}】的所有品項皆已在估價單中！")
-
-def clear_items():
-    st.session_state.cart = []
+        st.session_state.cart.extend(new_items)
 
 def reset_notes():
     st.session_state.selected_notes = []
     st.session_state.selected_warnings = []
-
 
 # 🔹 Section 1: 新增項目
 def render_section_1_add_items(items_by_category, all_items_flat):
@@ -188,56 +186,115 @@ def render_section_1_add_items(items_by_category, all_items_flat):
 
 # 🔹 Section 2: 目前估價單預覽
 def render_section_2_preview():
-    st.header("2. 目前估價單預覽")
-    if len(st.session_state.cart) > 0:
-        for item in st.session_state.cart:
-            if "選取" not in item: item["選取"] = False
+    st.header("2. 預覽與調整項目")
+    
+    if 'cart' not in st.session_state or not st.session_state.cart:
+        st.info("🛒 目前尚未加入任何項目，請從左側挑選。")
+        return
 
-        st.write("💡 提示：勾選「選取」框可定位插入點；點擊最左側數字旁小框並按 Delete 可刪除。")
-        col_del, col_clear = st.columns([1, 1])
-        col_del.button("🗑️ 刪除選取項目", use_container_width=True, on_click=delete_selected_items)
-        col_clear.button("🧹 清空所有品項", type="primary", use_container_width=True, on_click=clear_items)
-        
-        df = pd.DataFrame(st.session_state.cart)
-        if not df.empty: df.index = df.index + 1
-        exact_height = (len(df) + 1) * 36 + 43
-        
-        edited_df = st.data_editor(
-            df,
-            column_config={
-                "選取": st.column_config.CheckboxColumn("選取", default=False, width="small"),
-                "品名": st.column_config.TextColumn(disabled=False),
-                "單價": st.column_config.NumberColumn(disabled=False, step=100, min_value=0),
-                "單位": st.column_config.TextColumn(disabled=False),
-                "數量": st.column_config.NumberColumn(disabled=False, step=1, min_value=1),
-                "金額": st.column_config.NumberColumn(disabled=True)
-            },
-            column_order=("選取", "品名", "數量", "單位", "單價", "金額"),
-            hide_index=False, use_container_width=True,
-            num_rows="dynamic", height=exact_height, key="cart_editor"
-        )
-        
-        new_cart = edited_df.to_dict('records')
-        valid_cart, total_price = [], 0
-        
-        for item in new_cart:
-            if item.get('品名') is None or str(item.get('品名')).strip() == "": continue
-            qty = safe_int(item.get('數量'), 1)
-            price = safe_int(item.get('單價'), 0)
-            item['數量'], item['單價'] = qty, price
-            
-            if item.get('單位') is None or str(item.get('單位')).strip() == "": item['單位'] = "式"
-            item['選取'] = bool(item.get('選取', False)) 
-            calc_total = qty * price
-            item['金額'] = calc_total
-            total_price += calc_total
-            valid_cart.append(item)
+    # --- 0. 準備與清理資料 ---
+    df = pd.DataFrame(st.session_state.cart)
 
-        st.session_state.cart = valid_cart
-        st.markdown(f"### 總計金額： **${total_price:,}**")
+    # 🧹 終極殺蟲劑：徹底清除舊的「選取」欄位與系統隱藏亂碼
+    cols_to_drop = [col for col in df.columns if col.startswith('_') or col == '選取' or col == '編號']
+    if cols_to_drop:
+        df = df.drop(columns=cols_to_drop)
+
+    # 🔢 重新插入乾淨的「編號」欄
+    df.insert(0, '編號', range(1, len(df) + 1))
+
+    # --- 1. 設定 AgGrid 的強大功能 ---
+    gb = GridOptionsBuilder.from_dataframe(df)
+    
+    # 🔒 全域設定：先全部設為「不可編輯」，避免點擊衝突
+    gb.configure_default_column(editable=False, wrapText=True, autoHeight=True)
+    
+    # 🔓 針對需要的欄位開啟編輯功能 (✨ 這次把「單位」也加進來了！)
+    editable_cols = ["品名", "數量", "單位", "單價"] 
+    for col in editable_cols:
+        if col in df.columns:
+            gb.configure_column(col, editable=True)
+
+    # ✨ 完美排版：把「選取框」跟「編號」結合在同一個欄位
+    gb.configure_column(
+        "編號",
+        editable=False,
+        width=100,
+        checkboxSelection=True,       # 每一列的專屬打勾框
+        headerCheckboxSelection=True, # 標題列的全選打勾框
+        pinned="left"                 # 永遠固定在最左邊，往右滑也不會不見
+    )
+    
+    # 設定多選模式
+    gb.configure_selection(selection_mode="multiple", use_checkbox=False)
+    
+    gridOptions = gb.build()
+    
+    # 🛡️ 完美修復點擊衝突：禁止「點擊整列就選取」！
+    # 這樣只有點擊最左邊的「勾選框」才會選取，點擊其他文字欄位就能專心「雙擊編輯」了！
+    gridOptions['suppressRowClickSelection'] = True 
+
+    st.markdown("💡 **操作提示**：點擊最左側勾選框可多選。**雙擊**品名、數量、單位或單價可直接修改。")
+    
+    # --- 2. 顯示表格 ---
+    grid_response = AgGrid(
+        df,
+        gridOptions=gridOptions,
+        update_mode=GridUpdateMode.SELECTION_CHANGED | GridUpdateMode.VALUE_CHANGED,
+        data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+        fit_columns_on_grid_load=True, 
+        theme='streamlit', 
+        height=400 
+    )
+
+    # --- 3. 同步資料回購物車 (保持資料庫乾淨) ---
+    updated_df = grid_response['data']
+    selected_rows = grid_response['selected_rows']
+
+    # 存回購物車前，把「編號」跟「系統隱藏欄位」剃除掉
+    cols_to_keep = [col for col in updated_df.columns if not col.startswith('_') and col != '編號']
+    clean_df = updated_df[cols_to_keep]
+
+    # 正式更新購物車
+    st.session_state.cart = clean_df.to_dict('records')
+
+    if selected_rows is not None and len(selected_rows) > 0:
+        # 取出第一個被選取項目的「編號」，減 1 就是它在 list 中的真實 index
+        if isinstance(selected_rows, pd.DataFrame):
+            first_idx = int(selected_rows.iloc[0]['編號']) - 1
+        else:
+            first_idx = int(selected_rows[0]['編號']) - 1
+        st.session_state.insert_index = first_idx
     else:
-        st.info("👈 請從左側選擇分類加入項目，或在下方直接新增")
+        # 如果取消選取，就清空插入點 (恢復加到最下方)
+        st.session_state.insert_index = None
 
+    col_del1, col_del2 = st.columns(2)
+    
+    with col_del1:
+        if selected_rows is not None and len(selected_rows) > 0:
+            st.warning(f"已選取 {len(selected_rows)} 個項目")
+            if st.button("🗑️ 刪除選取的項目", type="primary", use_container_width=True):
+                # 將勾選的項目轉換成乾淨的字典格式
+                if isinstance(selected_rows, pd.DataFrame):
+                    selected_dicts = selected_rows[cols_to_keep].to_dict('records')
+                else:
+                    selected_dicts = [{k: v for k, v in row.items() if not k.startswith('_') and k != '編號'} for row in selected_rows]
+                
+                # 從購物車移除選中的項目
+                new_cart = [item for item in st.session_state.cart if item not in selected_dicts]
+                st.session_state.cart = new_cart
+                st.session_state.insert_index = None # 刪除後重置插入點
+                st.rerun() # 重新整理畫面
+
+    with col_del2:
+        # 只要購物車有東西，就顯示清空按鈕
+        if len(st.session_state.cart) > 0:
+            st.markdown("<div style='margin-top:54px;'></div>", unsafe_allow_html=True) # 對齊左邊的按鈕高度
+            if st.button("🚨 一鍵清空所有品項", type="secondary", use_container_width=True):
+                st.session_state.cart = [] # 直接將購物車歸零
+                st.session_state.insert_index = None # 重置插入點
+                st.rerun()
 
 # 🔹 Section 3: 條款與免責警語 (全新雙引擎階層版)
 def render_section_3_notes(notation_db, warning_db):
@@ -300,9 +357,7 @@ def render_section_3_notes(notation_db, warning_db):
         options=list(set(st.session_state.selected_notes + flat_notations)),
         default=st.session_state.selected_notes
     )
-
-    st.divider()
-
+    
     # ==========================================
     # ⚠️ 區塊 B：施工免責與警語
     # ==========================================
