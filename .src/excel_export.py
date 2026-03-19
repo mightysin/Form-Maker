@@ -1,13 +1,12 @@
 import io
 import openpyxl
-from openpyxl.styles import Alignment
+from openpyxl.styles import Alignment, Border, Side, PatternFill, Font # ✨ 引入 Font 用來改字體大小
 from openpyxl.utils import get_column_letter
 import re
 from copy import copy
 import streamlit as st
 
 def copy_worksheet_format_and_data(source_ws, target_ws):
-    """將範本的儲存格內容、寬高、合併格式、顏色與字體完美複製到新的工作表中"""
     for mcr in source_ws.merged_cells.ranges:
         target_ws.merge_cells(str(mcr))
         
@@ -30,6 +29,8 @@ def copy_worksheet_format_and_data(source_ws, target_ws):
                 
     for img in source_ws._images:
         new_img = copy(img)
+        new_img.width = img.width
+        new_img.height = img.height
         target_ws.add_image(new_img, img.anchor)
 
 def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, selected_notes, uploaded_file=None):
@@ -38,14 +39,12 @@ def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, s
     
     if uploaded_file is not None:
         wb = openpyxl.load_workbook(uploaded_file)
-        
         sheet_title = f"{export_date.month:02d}{export_date.day:02d}_報價"
         base_title = sheet_title
         counter = 1
         while sheet_title in wb.sheetnames:
             sheet_title = f"{base_title}_{counter}"
             counter += 1
-            
         ws = wb.create_sheet(title=sheet_title)
         copy_worksheet_format_and_data(source_ws, ws)
         wb.active = ws  
@@ -69,16 +68,25 @@ def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, s
             
         ws.cell(row=current_row, column=1).value = idx + 1               
         ws.cell(row=current_row, column=2).value = item.get("品名", "")  
-        ws.cell(row=current_row, column=3).value = item.get("數量", 0)   
+        
+        try: qty = int(float(item.get("數量", 0) or 0))
+        except Exception: qty = 0
+        
+        try: price = int(float(item.get("單價", 0) or 0))
+        except Exception: price = 0
+        
+        try: amount = int(float(item.get("金額", 0) or 0))
+        except Exception: amount = 0
+        
+        ws.cell(row=current_row, column=3).value = qty   
         ws.cell(row=current_row, column=4).value = item.get("單位", "")  
-        ws.cell(row=current_row, column=5).value = item.get("單價", 0)   
-        ws.cell(row=current_row, column=6).value = item.get("金額", 0)   
+        ws.cell(row=current_row, column=5).value = price   
+        ws.cell(row=current_row, column=6).value = amount   
         current_row += 1
 
     subtotal_row = -1
     for r in range(current_row, current_row + 100):
         cell_val = str(ws.cell(row=r, column=5).value).strip()
-        
         if "小計" in cell_val:
             subtotal_row = r
             ws.cell(row=r, column=6).value = subtotal       
@@ -99,9 +107,38 @@ def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, s
         
         new_subtotal_row = current_row
         
-        right_align = Alignment(horizontal='right')
+        right_align = Alignment(horizontal='right', vertical='center')
+        
+        # ✨ 準備畫筆：黑色細線與無邊線
+        thin_side = Side(border_style="thin", color="000000")
+        no_side = Side(border_style=None)
+        
+        # ✨ 客製化邊框：有上下橫線，但把中間多餘的直線藏起來
+        border_left = Border(top=thin_side, bottom=thin_side, left=thin_side, right=no_side)
+        border_middle = Border(top=thin_side, bottom=thin_side, left=no_side, right=no_side)
+        border_right = Border(top=thin_side, bottom=thin_side, left=no_side, right=thin_side)
+        border_full = Border(top=thin_side, bottom=thin_side, left=thin_side, right=thin_side)
+        
+        white_fill = PatternFill(fill_type="solid", fgColor="FFFFFFFF")
+        
         for i in range(3):
-            ws.cell(row=new_subtotal_row + i, column=5).alignment = right_align
+            row_idx = new_subtotal_row + i
+                    
+            ws.cell(row=row_idx, column=5).alignment = right_align
+            
+            # ✨ 手動畫線：塗上白漆後，幫每個格子補上正確的邊線
+            for col_idx in range(1, 7):
+                target_cell = ws.cell(row=row_idx, column=col_idx)
+                target_cell.fill = white_fill
+                
+                if col_idx == 1:
+                    target_cell.border = border_left
+                elif col_idx in [2, 3, 4]:
+                    target_cell.border = border_middle
+                elif col_idx == 5:
+                    target_cell.border = border_right
+                elif col_idx == 6:
+                    target_cell.border = border_full
         
         notes_row = -1
         for r in range(new_subtotal_row + 3, new_subtotal_row + 15):
@@ -120,10 +157,12 @@ def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, s
             lines_needed = max(5, len(notes_text) // 40 + len(selected_notes))
             ws.merge_cells(start_row=notes_row, start_column=1, end_row=notes_row + lines_needed, end_column=7)
 
-            # 磁吸魔法：將公司章吸附到注意事項正下方
             stamp_row = notes_row + lines_needed + 1
             for img in ws._images:
                 try:
+                    orig_w = img.width
+                    orig_h = img.height
+                    
                     if hasattr(img.anchor, '_from'):
                         original_row = img.anchor._from.row + 1
                         col_idx = img.anchor._from.col + 1
@@ -138,20 +177,15 @@ def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, s
                     
                     if original_row > 10:
                         img.anchor = f"{col_letter}{stamp_row}"
-                except Exception as e:
+                        img.width = orig_w
+                        img.height = orig_h
+                except Exception:
                     pass
-
-    # ========================================================
-    # ✨ 終極暴力破解：存檔前強制掃描所有圖片並寫死尺寸
-    # 您可以修改這裡的數字，直到匯出的比例看起來最完美為止
-    # (數值代表像素，通常 100~200 左右是合理範圍)
-    STAMP_WIDTH = 170   # 👈 在這裡修改寬度
-    STAMP_HEIGHT = 145  # 👈 在這裡修改高度
-    # ========================================================
-
+                    
+    STAMP_WIDTH = 180
+    STAMP_HEIGHT = 180
     for img in ws._images:
         try:
-            # 取得圖片目前的列數
             if hasattr(img.anchor, '_from'):
                 row_idx = img.anchor._from.row + 1
             else:
@@ -161,7 +195,6 @@ def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, s
                 else:
                     row_idx = 0
             
-            # 如果這張圖在第10列以下 (確保不影響未來可能加在表頭的Logo)
             if row_idx > 10:
                 img.width = STAMP_WIDTH
                 img.height = STAMP_HEIGHT
