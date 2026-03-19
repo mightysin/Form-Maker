@@ -12,6 +12,32 @@ from ui_layout import (
     render_section_4_export
 )
 
+def load_json(filename):
+    # 1. 抓到 app.py 所在的資料夾 (現在是正常的 src 了)
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # 2. 退回上一層，並進入 notation and warning，然後強制轉成乾淨的絕對路徑
+    target_dir = os.path.abspath(os.path.join(current_dir, "..", "notation and warning"))
+    file_path = os.path.join(target_dir, filename)
+    
+    if os.path.exists(file_path):
+        with open(file_path, 'r', encoding='utf-8-sig') as f:
+            content = f.read()
+            # 暴力洗淨隱形空白
+            content = content.replace('\xa0', ' ').replace('　', ' ')
+            try:
+                return json.loads(content)
+            except Exception as e:
+                st.error(f"❌ JSON 格式有誤【{filename}】：{e}")
+                return {}
+    else:
+        st.error(f"❌ 找不到檔案，請確認路徑：\n{file_path}")
+        return {}
+
+# 重新載入您的雙資料庫
+notation_db = load_json("notation.json")
+warning_db = load_json("warning.json")
+
 # 設定網頁標題與寬度
 st.set_page_config(page_title="Form Maker 估價單系統", layout="wide")
 
@@ -69,7 +95,7 @@ with col_right:
 st.divider() # 區塊之間可以用分隔線隔開，畫面比較整齊
 
 # 第三區塊：注意事項 (一開始就會顯示)
-render_section_3_notes(notes_db, all_available_notes)
+render_section_3_notes(notation_db, warning_db)
 
 st.divider()
 
