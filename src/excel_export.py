@@ -1,6 +1,6 @@
 import io
 import openpyxl
-from openpyxl.styles import Alignment, Border, Side, PatternFill, Font # ✨ 引入 Font 用來改字體大小
+from openpyxl.styles import Alignment, Border, Side, PatternFill, Font
 from openpyxl.utils import get_column_letter
 import re
 from copy import copy
@@ -75,26 +75,23 @@ def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, s
         try: price = int(float(item.get("單價", 0) or 0))
         except Exception: price = 0
         
-        try: amount = int(float(item.get("金額", 0) or 0))
-        except Exception: amount = 0
-        
         ws.cell(row=current_row, column=3).value = qty   
         ws.cell(row=current_row, column=4).value = item.get("單位", "")  
         ws.cell(row=current_row, column=5).value = price   
-        ws.cell(row=current_row, column=6).value = amount   
+        
+        # ✨ 重點修改 1：不寫死金額，而是寫入 Excel 公式 (C欄 乘 E欄)
+        ws.cell(row=current_row, column=6).value = f"=C{current_row}*E{current_row}"   
         current_row += 1
 
     subtotal_row = -1
     for r in range(current_row, current_row + 100):
-        cell_val = str(ws.cell(row=r, column=5).value).strip()
-        if "小計" in cell_val:
+        # 加強搜尋：同時找 D 欄跟 E 欄，避免抓不到小計位置
+        if "小計" in str(ws.cell(row=r, column=4).value).strip() or "小計" in str(ws.cell(row=r, column=5).value).strip():
             subtotal_row = r
-            ws.cell(row=r, column=6).value = subtotal       
-            ws.cell(row=r+1, column=6).value = tax          
-            ws.cell(row=r+2, column=6).value = grand_total  
             break
 
     if subtotal_row != -1 and subtotal_row > current_row:
+        # 1. 解除合併儲存格
         ranges_to_unmerge = []
         for m_range in ws.merged_cells.ranges:
             if not (m_range.max_row < current_row or m_range.min_row >= subtotal_row):
@@ -102,43 +99,57 @@ def generate_excel(client_name, export_date, subtotal, tax, grand_total, cart, s
         for m_range in ranges_to_unmerge:
             ws.unmerge_cells(str(m_range))
             
+        # 2. 刪除多餘空白列
         rows_to_delete = subtotal_row - current_row
         ws.delete_rows(current_row, amount=rows_to_delete)
-        
         new_subtotal_row = current_row
         
+        # 3. 先畫框線與背景色 (避免覆蓋到後面的文字)
         right_align = Alignment(horizontal='right', vertical='center')
-        
-        # ✨ 準備畫筆：黑色細線與無邊線
         thin_side = Side(border_style="thin", color="000000")
         no_side = Side(border_style=None)
         
-        # ✨ 客製化邊框：有上下橫線，但把中間多餘的直線藏起來
         border_left = Border(top=thin_side, bottom=thin_side, left=thin_side, right=no_side)
         border_middle = Border(top=thin_side, bottom=thin_side, left=no_side, right=no_side)
         border_right = Border(top=thin_side, bottom=thin_side, left=no_side, right=thin_side)
         border_full = Border(top=thin_side, bottom=thin_side, left=thin_side, right=thin_side)
-        
         white_fill = PatternFill(fill_type="solid", fgColor="FFFFFFFF")
+        bold_font = Font(name="新細明體", size=14, bold=True) # 設定字體加粗
         
         for i in range(3):
             row_idx = new_subtotal_row + i
-                    
-            ws.cell(row=row_idx, column=5).alignment = right_align
-            
-            # ✨ 手動畫線：塗上白漆後，幫每個格子補上正確的邊線
             for col_idx in range(1, 7):
                 target_cell = ws.cell(row=row_idx, column=col_idx)
                 target_cell.fill = white_fill
-                
-                if col_idx == 1:
-                    target_cell.border = border_left
-                elif col_idx in [2, 3, 4]:
-                    target_cell.border = border_middle
-                elif col_idx == 5:
-                    target_cell.border = border_right
-                elif col_idx == 6:
-                    target_cell.border = border_full
+                if col_idx == 1: target_cell.border = border_left
+                elif col_idx in [2, 3, 4]: target_cell.border = border_middle
+                elif col_idx == 5: target_cell.border = border_right
+                elif col_idx == 6: target_cell.border = border_full
+
+        # 4. ✨ 暴力強制寫入文字與公式 (畫完格子後再寫，保證不會消失)
+        last_item_row = current_row - 1
+        sum_range = f"F8:F{last_item_row}" if last_item_row >= 8 else "0"
+        raw_sum = sum([(int(float(i.get("數量", 0) or 0)) * int(float(i.get("單價", 0) or 0))) for i in cart])
+
+        # 寫入文字標籤並設定對齊
+        ws.cell(row=new_subtotal_row, column=5).value = "小計"
+        ws.cell(row=new_subtotal_row+2, column=5).value = "總計"
+        
+        for i in range(3):
+            ws.cell(row=new_subtotal_row + i, column=5).alignment = right_align
+            ws.cell(row=new_subtotal_row + i, column=5).font = bold_font
+            ws.cell(row=new_subtotal_row + i, column=6).font = bold_font
+
+        if raw_sum == grand_total and tax > 0:
+            ws.cell(row=new_subtotal_row+1, column=5).value = "營業稅(內含)"
+            ws.cell(row=new_subtotal_row+2, column=6).value = f"=SUM({sum_range})"
+            ws.cell(row=new_subtotal_row, column=6).value = f"=ROUND(F{new_subtotal_row+2}/1.05, 0)"
+            ws.cell(row=new_subtotal_row+1, column=6).value = f"=F{new_subtotal_row+2}-F{new_subtotal_row}"
+        else:
+            ws.cell(row=new_subtotal_row+1, column=5).value = "營業稅(5%)"
+            ws.cell(row=new_subtotal_row, column=6).value = f"=SUM({sum_range})"
+            ws.cell(row=new_subtotal_row+1, column=6).value = f"=ROUND(F{new_subtotal_row}*0.05, 0)"
+            ws.cell(row=new_subtotal_row+2, column=6).value = f"=F{new_subtotal_row}+F{new_subtotal_row+1}"
         
         notes_row = -1
         for r in range(new_subtotal_row + 3, new_subtotal_row + 15):
